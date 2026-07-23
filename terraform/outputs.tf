@@ -19,11 +19,10 @@ output "app_insights_connection_string" {
   sensitive   = true
 }
 
-# Step 6, uncomment together with the azurerm_dashboard_grafana resource.
-# output "grafana_endpoint" {
-#   description = "Azure Managed Grafana URL."
-#   value       = azurerm_dashboard_grafana.grafana.endpoint
-# }
+output "grafana_endpoint" {
+  description = "Azure Managed Grafana URL."
+  value       = azurerm_dashboard_grafana.grafana.endpoint
+}
 
 output "dce_id" {
   description = "Auto-created Data Collection Endpoint, needed to build the remote_write URL."
