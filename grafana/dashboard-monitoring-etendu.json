@@ -1,0 +1,137 @@
+{
+  "title": "Monitoring etendu - log-analyser",
+  "tags": ["tp", "monitoring", "mpetit"],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Requetes par minute (App Insights, KQL)",
+      "description": "Trafic HTTP total recu par l'App Service, vu par Application Insights.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "azure-monitor-oob" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqpm", "custom": { "fillOpacity": 15, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "Azure Log Analytics",
+          "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "azure-monitor-oob" },
+          "azureLogAnalytics": {
+            "resources": [
+              "/subscriptions/__SUBSCRIPTION_ID__/resourceGroups/mpetitRG/providers/microsoft.insights/components/appi-monitoring-mpetit"
+            ],
+            "query": "requests\n| summarize Requetes = count() by bin(timestamp, 1m)\n| order by timestamp asc",
+            "resultFormat": "time_series",
+            "dashboardTime": true,
+            "timeColumn": "timestamp"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Taux d'echec HTTP en % (App Insights, KQL)",
+      "description": "Part des requetes en echec sur des fenetres de 5 minutes.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "azure-monitor-oob" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "fillOpacity": 15, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "Azure Log Analytics",
+          "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "azure-monitor-oob" },
+          "azureLogAnalytics": {
+            "resources": [
+              "/subscriptions/__SUBSCRIPTION_ID__/resourceGroups/mpetitRG/providers/microsoft.insights/components/appi-monitoring-mpetit"
+            ],
+            "query": "requests\n| summarize total = count(), echecs = countif(success == false) by bin(timestamp, 5m)\n| extend TauxEchec = round(100.0 * echecs / total, 2)\n| project timestamp, TauxEchec\n| order by timestamp asc",
+            "resultFormat": "time_series",
+            "dashboardTime": true,
+            "timeColumn": "timestamp"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Erreurs applicatives par 5 min (Prometheus, PromQL)",
+      "description": "increase() sur le compteur log_erreurs_total. Le compteur brut ne fait que monter, l'increase montre les pics reels. Seuil de l'alerte : 5.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "amw-monitoring-mpetit" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 20, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "amw-monitoring-mpetit" },
+          "expr": "increase(log_erreurs_total[5m])",
+          "legendFormat": "{{instance}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Disponibilite du scrape (Prometheus, PromQL)",
+      "description": "up vaut 1 quand la VM Prometheus atteint /metrics sur l'App Service, 0 sinon.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "amw-monitoring-mpetit" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": { "fillOpacity": 25, "lineWidth": 2 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "amw-monitoring-mpetit" },
+          "expr": "up{job=\"log-analyser-app\"}",
+          "legendFormat": "{{job}}",
+          "range": true
+        }
+      ]
+    }
+  ]
+}
