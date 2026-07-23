@@ -241,15 +241,26 @@ resource "azurerm_role_assignment" "prometheus_dcr_reader" {
 # Step 6: Azure Managed Grafana
 ##############################################################################
 
-# resource "azurerm_dashboard_grafana" "grafana" {
-#   grafana_major_version = "12" # required, no default; error message lists valid values
-#
-#   identity {
-#     type = "SystemAssigned"
-#   }
-# }
+resource "azurerm_dashboard_grafana" "grafana" {
+  name                = "grafana-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  tags                = local.tags
 
-# resource "azurerm_role_assignment" "grafana_monitoring_reader" { ... }
+  # Required, there is no default value. If "12" is rejected, the terraform
+  # apply error message lists the versions currently accepted.
+  grafana_major_version = "12"
+
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+resource "azurerm_role_assignment" "grafana_monitoring_reader" {
+  scope                = data.azurerm_resource_group.rg.id
+  role_definition_name = "Monitoring Reader"
+  principal_id         = azurerm_dashboard_grafana.grafana.identity[0].principal_id
+}
 
 ##############################################################################
 # Step 7: alerting, one business alert (PromQL) and one technical alert (KQL)
