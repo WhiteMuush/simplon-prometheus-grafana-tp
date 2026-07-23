@@ -1,0 +1,3 @@
+# Drop the log-analyser Flask app here, then instrument it (step 2):
+#   pip install azure-monitor-opentelemetry prometheus-flask-exporter
+# Delete this file once the app is in place.
