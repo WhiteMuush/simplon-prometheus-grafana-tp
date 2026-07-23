@@ -73,9 +73,11 @@ resource "azurerm_application_insights" "appi" {
 # Creating it auto-creates a Data Collection Endpoint and Rule.
 ##############################################################################
 
-# resource "azurerm_monitor_workspace" "amw" {
-#   ...
-# }
+resource "azurerm_monitor_workspace" "amw" {
+  name                = "amw-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+}
 
 ##############################################################################
 # Step 4.2: network + VM running Prometheus
