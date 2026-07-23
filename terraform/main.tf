@@ -10,6 +10,9 @@ data "azurerm_resource_group" "rg" {
   name = var.resource_group_name
 }
 
+# Who is running terraform: used to grant myself access to Grafana.
+data "azurerm_client_config" "current" {}
+
 locals {
   suffix = var.owner
   tags   = var.tags
@@ -256,12 +259,35 @@ resource "azurerm_dashboard_grafana" "grafana" {
   identity {
     type = "SystemAssigned"
   }
+
+  # Without this, Grafana only ships the out-of-the-box "Azure Monitor" data
+  # source, which covers KQL but not PromQL. Linking the workspace makes Azure
+  # provision a Prometheus data source pointing at its query endpoint.
+  azure_monitor_workspace_integrations {
+    resource_id = azurerm_monitor_workspace.amw.id
+  }
 }
 
 resource "azurerm_role_assignment" "grafana_monitoring_reader" {
   scope                = data.azurerm_resource_group.rg.id
   role_definition_name = "Monitoring Reader"
   principal_id         = azurerm_dashboard_grafana.grafana.identity[0].principal_id
+}
+
+# Monitoring Reader covers the Log Analytics side. Querying Prometheus data
+# out of the Azure Monitor Workspace is a separate, data-plane permission.
+resource "azurerm_role_assignment" "grafana_amw_data_reader" {
+  scope                = azurerm_monitor_workspace.amw.id
+  role_definition_name = "Monitoring Data Reader"
+  principal_id         = azurerm_dashboard_grafana.grafana.identity[0].principal_id
+}
+
+# Creating the Grafana instance grants no access to it. Without this, opening
+# the endpoint returns a "you do not have access" page.
+resource "azurerm_role_assignment" "grafana_admin_me" {
+  scope                = azurerm_dashboard_grafana.grafana.id
+  role_definition_name = "Grafana Admin"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 ##############################################################################
@@ -283,8 +309,19 @@ resource "azurerm_monitor_alert_prometheus_rule_group" "alerte_erreurs" {
   name                = "alerte-erreurs-${local.suffix}"
   resource_group_name = data.azurerm_resource_group.rg.name
   location            = data.azurerm_resource_group.rg.location
-  cluster_name        = azurerm_monitor_workspace.amw.name
   scopes              = [azurerm_monitor_workspace.amw.id]
+
+  # cluster_name is deliberately absent. Azure uses it to restrict evaluation
+  # to series carrying a matching "cluster" label, which the AKS addon adds on
+  # its own. Nothing adds it here: our series only carry job and instance, so
+  # setting cluster_name = amw-monitoring-mpetit made the rule evaluate over an
+  # empty set and never fire, while the query itself was correct.
+  #
+  # The alternative, closer to what AKS does, is to keep cluster_name and have
+  # Prometheus stamp the label itself:
+  #   global:
+  #     external_labels:
+  #       cluster: amw-monitoring-mpetit
 
   rule {
     enabled = true
