@@ -1,0 +1,15 @@
+# core.autocrlf is on, but these files run on Linux (App Service, Prometheus VM).
+# A CRLF shebang breaks the script, so force LF regardless of local settings.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.tf   text eol=lf
+*.json text eol=lf
+
+*.png binary
+*.jpg binary
+*.svg text eol=lf
+*.zip binary
