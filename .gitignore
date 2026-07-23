@@ -1,0 +1,58 @@
+# ---- Terraform ----
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# tfvars can hold subscription ids, object ids, emails: keep them out
+*.tfvars
+*.tfvars.json
+!example.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ---- Secrets and credentials ----
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+.env
+.env.*
+!.env.example
+azure-credentials.json
+*-sp.json
+
+# ---- Python / Flask app ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+instance/
+
+# ---- Azure CLI / deployment leftovers ----
+.azure/
+.deployment
+output.tar.gz
+
+# ---- IDE ----
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
