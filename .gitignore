@@ -45,6 +45,9 @@ instance/
 .azure/
 .deployment
 output.tar.gz
+# deployment artifacts rebuilt from app/, never commit them
+app.zip
+*.zip
 
 # ---- IDE ----
 .idea/

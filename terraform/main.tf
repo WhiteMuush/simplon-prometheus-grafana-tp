@@ -139,5 +139,23 @@ locals {
 #   }
 # }
 
-# resource "azurerm_monitor_alert_prometheus_rule_group" "alerte_erreurs" { ... }
+# resource "azurerm_monitor_alert_prometheus_rule_group" "alerte_erreurs" {
+#   cluster_name = azurerm_monitor_workspace.amw.name
+#   scopes       = [azurerm_monitor_workspace.amw.id]
+#
+#   rule {
+#     enabled  = true
+#     severity = 2
+#
+#     # app.py exposes log_erreurs_total as a Counter, which only ever grows.
+#     # "log_erreurs_total > 5" would fire once and stay firing until the App
+#     # Service restarts. Alert on the growth over a window instead, so the
+#     # alert clears on its own once errors stop.
+#     expression = "increase(log_erreurs_total[5m]) > 5"
+#
+#     action {
+#       action_group_id = azurerm_monitor_action_group.ag.id
+#     }
+#   }
+# }
 # resource "azurerm_monitor_scheduled_query_rules_alert_v2" "alerte_taux_erreur" { ... }
