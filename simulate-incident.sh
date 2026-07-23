@@ -6,7 +6,7 @@
 # Usage : ./simulate-incident.sh [nom-app-service]
 set -e
 
-APP="${1:-app-monitoring-groupe1}"
+APP="${1:-app-monitoring-mpetit}"
 URL="https://${APP}.azurewebsites.net"
 
 echo "Cible : $URL"
