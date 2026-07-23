@@ -27,6 +27,12 @@ variable "alert_email" {
   default     = "melvin.petit31@gmail.com"
 }
 
+variable "allowed_source_ip" {
+  description = "Only this address may reach SSH and the Prometheus UI on the VM. Update it when your ISP hands you a new one."
+  type        = string
+  default     = "93.93.43.119"
+}
+
 variable "ssh_public_key_path" {
   description = "Public key injected into the Prometheus VM."
   type        = string
