@@ -83,7 +83,7 @@ The Prometheus VM is the only piece introducing classic networking (VNet, dedica
 terraform/
 ├── backend.tf         # azurerm remote state, one key per team
 ├── providers.tf       # azurerm ~> 4.0
-├── variables.tf       # groupe, location, tags
+├── variables.tf       # resource group, owner suffix, alert email, tags
 ├── main.tf            # App Service + App Insights + Monitor Workspace + Prometheus VM + roles + alerts
 └── outputs.tf         # app URL, Grafana endpoint, DCE and DCR ids
 app/
@@ -111,19 +111,19 @@ simulate-incident.sh   # fires errors at the app to trigger both alerts
 
 ```bash
 cd terraform
-terraform init      # state key set in backend.tf
+terraform init      # see backend.tf before running this
 terraform plan
-terraform apply -var="groupe=groupe1"
+terraform apply
 ```
 
 Then deploy the application code and check both signals:
 
 ```bash
 cd app
-az webapp up --name app-monitoring-groupe1 --resource-group rg-monitoring-groupe1 --runtime "PYTHON:3.11"
+az webapp up --name app-monitoring-mpetit --resource-group mpetitRG --runtime "PYTHON:3.11"
 
-curl https://app-monitoring-groupe1.azurewebsites.net/health
-curl https://app-monitoring-groupe1.azurewebsites.net/metrics
+curl https://app-monitoring-mpetit.azurewebsites.net/health
+curl https://app-monitoring-mpetit.azurewebsites.net/metrics
 ```
 
 Prometheus data lands in the Azure Monitor Workspace a few minutes after the VM starts. Check it in the portal under **Prometheus Explorer** with the query `log_erreurs_total`.
@@ -131,8 +131,8 @@ Prometheus data lands in the Azure Monitor Workspace a few minutes after the VM 
 ## Trigger the alerts
 
 ```bash
-./simulate-incident.sh                        # defaults to app-monitoring-groupe1
-./simulate-incident.sh app-monitoring-groupe2 # or target another team's app
+./simulate-incident.sh                     # defaults to app-monitoring-mpetit
+./simulate-incident.sh autre-app-service   # or target another app
 ```
 
 It fires 20 requests at `/error` and 10 at `/crash`, then prints the `log_erreurs_total` counter straight from `/metrics`. Both alerts should follow: the Prometheus rule group on the business metric, and the scheduled query rule on Application Insights failures.
@@ -155,7 +155,7 @@ It fires 20 requests at `/error` and 10 at `/crash`, then prints the `log_erreur
 
 ```bash
 cd terraform
-terraform destroy -var="groupe=groupe1"
+terraform destroy
 # The resource group itself is kept, it is pre-created by the instructor
 ```
 

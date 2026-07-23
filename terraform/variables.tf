@@ -1,15 +1,22 @@
-variable "groupe" {
-  description = "Team identifier, used as a suffix on every resource name."
+variable "resource_group_name" {
+  description = "Pre-created resource group. Everything is deployed inside it, nothing outside."
   type        = string
+  default     = "mpetitRG"
+}
+
+variable "owner" {
+  description = "Suffix appended to every resource name. Lowercase, no space: it ends up in a public DNS name."
+  type        = string
+  default     = "mpetit"
 
   validation {
-    condition     = contains(["groupe1", "groupe2", "groupe3"], var.groupe)
-    error_message = "groupe must be one of: groupe1, groupe2, groupe3."
+    condition     = can(regex("^[a-z0-9-]+$", var.owner))
+    error_message = "owner must contain only lowercase letters, digits and hyphens."
   }
 }
 
 variable "location" {
-  description = "Azure region. Kept as a variable, but resources inherit the resource group location by default."
+  description = "Azure region. Resources inherit the resource group location, this is a fallback."
   type        = string
   default     = "francecentral"
 }
@@ -17,7 +24,7 @@ variable "location" {
 variable "alert_email" {
   description = "Address receiving the Action Group notifications."
   type        = string
-  default     = "formateur@simplon.co"
+  default     = "melvin.petit31@gmail.com"
 }
 
 variable "ssh_public_key_path" {
