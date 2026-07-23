@@ -7,11 +7,11 @@
 ##############################################################################
 
 data "azurerm_resource_group" "rg" {
-  name = "rg-monitoring-${var.groupe}"
+  name = var.resource_group_name
 }
 
 locals {
-  suffix = var.groupe
+  suffix = var.owner
   tags   = var.tags
 }
 
@@ -19,56 +19,65 @@ locals {
 # Step 1: App Service hosting the log-analyser Flask API
 ##############################################################################
 
-# resource "azurerm_service_plan" "plan" {
-#   name                = "plan-monitoring-${local.suffix}"
-#   resource_group_name = data.azurerm_resource_group.rg.name
-#   location            = data.azurerm_resource_group.rg.location
-#   os_type             = "Linux"
-#   sku_name            = "B1"
-#   tags                = local.tags
-# }
+resource "azurerm_service_plan" "plan" {
+  name                = "plan-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  os_type             = "Linux"
+  sku_name            = "B1"
+  tags                = local.tags
+}
 
-# resource "azurerm_linux_web_app" "app" {
-#   name                = "app-monitoring-${local.suffix}"
-#   resource_group_name = data.azurerm_resource_group.rg.name
-#   location            = data.azurerm_resource_group.rg.location
-#   service_plan_id     = azurerm_service_plan.plan.id
-#   tags                = local.tags
-#
-#   site_config {
-#     application_stack {
-#       python_version = "3.11"
-#     }
-#     # Do NOT set app_command_line: it breaks Azure's Flask autodetection.
-#   }
-#
-#   app_settings = {
-#     "SCM_DO_BUILD_DURING_DEPLOYMENT"        = "true"
-#     "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appi.connection_string
-#   }
-# }
+resource "azurerm_linux_web_app" "app" {
+  name                = "app-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  service_plan_id     = azurerm_service_plan.plan.id
+  tags                = local.tags
+  site_config {
+    application_stack {
+      python_version = "3.11"
+    }
+    # Do NOT set app_command_line: it breaks Azure's Flask autodetection.
+  }
+  app_settings = {
+    "SCM_DO_BUILD_DURING_DEPLOYMENT"        = "true"
+    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appi.connection_string
+  }
+}
 
 ##############################################################################
 # Step 3: Application Insights, backed by a Log Analytics Workspace
 ##############################################################################
 
-# resource "azurerm_log_analytics_workspace" "law" {
-#   ...
-# }
+resource "azurerm_log_analytics_workspace" "law" {
+  name                = "law-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  tags                = local.tags
+}
 
-# resource "azurerm_application_insights" "appi" {
-#   ...
-#   workspace_id = azurerm_log_analytics_workspace.law.id
-# }
+resource "azurerm_application_insights" "appi" {
+  name                = "appi-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  workspace_id        = azurerm_log_analytics_workspace.law.id
+  application_type    = "web"
+  tags                = local.tags
+}
 
 ##############################################################################
 # Step 4.1: Azure Monitor Workspace (managed Prometheus storage)
 # Creating it auto-creates a Data Collection Endpoint and Rule.
 ##############################################################################
 
-# resource "azurerm_monitor_workspace" "amw" {
-#   ...
-# }
+resource "azurerm_monitor_workspace" "amw" {
+  name                = "amw-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+}
 
 ##############################################################################
 # Step 4.2: network + VM running Prometheus
