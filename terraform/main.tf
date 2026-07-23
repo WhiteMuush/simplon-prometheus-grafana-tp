@@ -311,6 +311,12 @@ resource "azurerm_monitor_alert_prometheus_rule_group" "alerte_erreurs" {
   location            = data.azurerm_resource_group.rg.location
   scopes              = [azurerm_monitor_workspace.amw.id]
 
+  # Second switch, distinct from the "enabled" inside the rule block below.
+  # Without it the provider sends false, so Azure holds an enabled rule inside
+  # a disabled group and never evaluates the expression: no alert, no email,
+  # and nothing in the portal explaining why.
+  rule_group_enabled = true
+
   # cluster_name is deliberately absent. Azure uses it to restrict evaluation
   # to series carrying a matching "cluster" label, which the AKS addon adds on
   # its own. Nothing adds it here: our series only carry job and instance, so
