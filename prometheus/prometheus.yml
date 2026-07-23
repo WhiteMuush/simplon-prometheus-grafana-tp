@@ -1,7 +1,12 @@
 # Deployed to /etc/prometheus/prometheus.yml on the Prometheus VM.
-# Replace the two placeholders with the values collected in step 5:
-#   az monitor data-collection endpoint show --ids "$DCE_ID" --query metricsIngestionEndpoint -o tsv
+#
+# The two values below come from the Data Collection Endpoint and Rule that
+# Azure created on its own alongside the Azure Monitor Workspace:
+#   az monitor data-collection endpoint show --ids "$DCE_ID" --query metricsIngestion.endpoint -o tsv
 #   az monitor data-collection rule show --ids "$DCR_ID" --query immutableId -o tsv
+#
+# Note the query path: metricsIngestion.endpoint, not metricsIngestionEndpoint.
+# The flat name returns an empty string instead of an error.
 
 global:
   scrape_interval: 30s
@@ -10,12 +15,12 @@ scrape_configs:
   - job_name: 'log-analyser-app'
     scheme: https
     static_configs:
-      - targets: ['app-monitoring-groupe1.azurewebsites.net']
+      - targets: ['app-monitoring-mpetit.azurewebsites.net']
 
 remote_write:
-  - url: "<DCE-METRICS-INGESTION-ENDPOINT>/dataCollectionRules/<DCR-IMMUTABLE-ID>/streams/Microsoft-PrometheusMetrics/api/v1/write?api-version=2023-04-24"
+  - url: "__DCE_METRICS_INGESTION_ENDPOINT__/dataCollectionRules/__DCR_IMMUTABLE_ID__/streams/Microsoft-PrometheusMetrics/api/v1/write?api-version=2023-04-24"
     azuread:
       cloud: 'AzurePublic'
       managed_identity:
-        # Empty = system-assigned identity. Requires Prometheus 3.50 or later.
+        # Empty = the VM's system-assigned identity. Requires Prometheus 3.50+.
         client_id: ""
