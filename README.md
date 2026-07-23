@@ -32,6 +32,18 @@ Two complementary monitoring signals for the same Flask API, combined in a singl
 
 The app carries a dual instrumentation: `azure-monitor-opentelemetry` sends traces to Application Insights, while `prometheus-flask-exporter` exposes `/metrics` for Prometheus to scrape.
 
+### App routes
+
+| Route | Behaviour | What it exercises |
+|---|---|---|
+| `/` | 200, returns a greeting | Baseline traffic |
+| `/health` | 200, `{"status": "ok"}` | Liveness check |
+| `/error` | 500, logs at `ERROR` | Feeds `log_erreurs_total` and Application Insights failures |
+| `/slow` | 200 after 3 s | Response-time panel |
+| `/crash` | Raises, logs at `CRITICAL` | Unhandled exception path |
+
+`log_erreurs_total` is a Prometheus `Counter` incremented by a `logging.Handler` attached to the Flask logger, so any log record at `ERROR` or above is counted wherever it is emitted, rather than counting by hand inside each route.
+
 ## Architecture
 
 ```mermaid
@@ -74,12 +86,16 @@ terraform/
 ├── variables.tf       # groupe, location, tags
 ├── main.tf            # App Service + App Insights + Monitor Workspace + Prometheus VM + roles + alerts
 └── outputs.tf         # app URL, Grafana endpoint, DCE and DCR ids
-app/                   # log-analyser, instrumented for App Insights + Prometheus
+app/
+├── app.py             # Flask API, instrumented for App Insights + Prometheus
+└── requirements.txt
+function/              # HTTP-triggered Function App, kept from the previous lab
 prometheus/
 └── prometheus.yml     # scrape config + remote_write to the Azure Monitor Workspace
 docs/
 └── CONSIGNES.md       # full assignment
 captures/              # Grafana dashboard and triggered alerts
+simulate-incident.sh   # fires errors at the app to trigger both alerts
 ```
 
 ## Dashboard panels
@@ -112,12 +128,22 @@ curl https://app-monitoring-groupe1.azurewebsites.net/metrics
 
 Prometheus data lands in the Azure Monitor Workspace a few minutes after the VM starts. Check it in the portal under **Prometheus Explorer** with the query `log_erreurs_total`.
 
+## Trigger the alerts
+
+```bash
+./simulate-incident.sh                        # defaults to app-monitoring-groupe1
+./simulate-incident.sh app-monitoring-groupe2 # or target another team's app
+```
+
+It fires 20 requests at `/error` and 10 at `/crash`, then prints the `log_erreurs_total` counter straight from `/metrics`. Both alerts should follow: the Prometheus rule group on the business metric, and the scheduled query rule on Application Insights failures.
+
 ## Gotchas worth knowing
 
 - Role assignments take **up to 30 minutes** to propagate. A `403` in the Prometheus logs right after `terraform apply` is usually just propagation delay.
 - `Monitoring Metrics Publisher` alone is not enough. Reading the auto-created Data Collection Endpoint and Rule also requires `Monitoring Reader`, otherwise the `az monitor data-collection ... show` calls fail with `AuthorizationFailed`.
 - Never set a manual startup command on the App Service. It breaks Azure's Flask autodetection and produces `ModuleNotFoundError: No module named 'app'`.
 - Prometheus 2.x rejects an empty `client_id` with a system-assigned identity. Use 3.50 or later.
+- `log_erreurs_total` is a Counter, so it only ever grows. The assignment's `log_erreurs_total > 5` would fire once and never clear until the App Service restarts. The rule group uses `increase(log_erreurs_total[5m]) > 5` instead, which resolves on its own once errors stop.
 
 ## Outputs
 
