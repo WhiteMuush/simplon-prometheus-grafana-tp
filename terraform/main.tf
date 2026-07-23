@@ -84,42 +84,158 @@ resource "azurerm_monitor_workspace" "amw" {
 # Reuse the network module from the Terraform lab. Port 9090 from your IP only.
 ##############################################################################
 
-# resource "azurerm_virtual_network" "vnet" { ... }
-# resource "azurerm_subnet" "prometheus" { ... }
-# resource "azurerm_network_security_group" "nsg" { ... }
-# resource "azurerm_public_ip" "pip" { ... }
-# resource "azurerm_network_interface" "nic" { ... }
+# The address space the VM lives in. Nothing else uses it, but a VM cannot
+# exist without a subnet, and a subnet cannot exist without a virtual network.
+resource "azurerm_virtual_network" "vnet" {
+  name                = "vnet-monitoring-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  address_space       = ["10.0.0.0/16"]
+  tags                = local.tags
+}
 
-# resource "azurerm_linux_virtual_machine" "prometheus_vm" {
-#   size = "Standard_D2s_v3" # not B1s: unavailable on the training subscription
-#
-#   identity {
-#     type = "SystemAssigned"
-#   }
-#
-#   admin_ssh_key {
-#     username   = "azureuser"
-#     public_key = file(var.ssh_public_key_path)
-#   }
-#
-#   # cloud-init must install Prometheus 3.50 or later: an empty client_id
-#   # (system-assigned identity) is rejected by 2.x.
-#   custom_data = base64encode(file("${path.module}/cloud-init-prometheus.sh"))
-# }
+# A slice of the address space, reserved for Prometheus.
+resource "azurerm_subnet" "prometheus" {
+  name                 = "snet-prometheus"
+  resource_group_name  = data.azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.3.0/24"]
+}
+
+# Firewall. Azure denies inbound traffic by default, so only the two ports
+# below are reachable, and only from my own address.
+resource "azurerm_network_security_group" "nsg" {
+  name                = "nsg-prometheus-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  tags                = local.tags
+
+  security_rule {
+    name                       = "allow-ssh-from-me"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = var.allowed_source_ip
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "allow-prometheus-ui-from-me"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "9090"
+    source_address_prefix      = var.allowed_source_ip
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "prometheus" {
+  subnet_id                 = azurerm_subnet.prometheus.id
+  network_security_group_id = azurerm_network_security_group.nsg.id
+}
+
+# Static, so the address survives a VM restart and stays valid in the NSG
+# rules and in my ssh config.
+resource "azurerm_public_ip" "pip" {
+  name                = "pip-prometheus-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = local.tags
+}
+
+# The virtual network card: it holds the private address inside the subnet
+# and carries the public IP. The VM plugs into this, not into the subnet.
+resource "azurerm_network_interface" "nic" {
+  name                = "nic-prometheus-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  tags                = local.tags
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.prometheus.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.pip.id
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "prometheus_vm" {
+  name                = "vm-prometheus-${local.suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  size                = "Standard_D2s_v3"
+  admin_username      = "azureuser"
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  admin_ssh_key {
+    username   = "azureuser"
+    public_key = file("~/.ssh/id_rsa.pub")
+  }
+
+  network_interface_ids = [azurerm_network_interface.nic.id]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+
+  custom_data = base64encode(<<-EOF
+    #!/bin/bash
+    # Version 3.12.0, NOT 2.53.0: a SYSTEM-assigned managed identity (our case, empty
+    # client_id in prometheus.yml at step 5) requires Prometheus 3.50+ per Microsoft docs.
+    # On an older version Prometheus fails at startup with "must provide an Azure Managed
+    # Identity client_id in the Azure AD config".
+    apt-get update
+    apt-get install -y wget
+    useradd --no-create-home --shell /bin/false prometheus
+    wget https://github.com/prometheus/prometheus/releases/download/v3.12.0/prometheus-3.12.0.linux-amd64.tar.gz
+    tar xvf prometheus-3.12.0.linux-amd64.tar.gz
+    cp prometheus-3.12.0.linux-amd64/prometheus /usr/local/bin/
+    mkdir -p /etc/prometheus
+  EOF
+  )
+}
 
 ##############################################################################
 # Step 4.3: RBAC. Publisher writes metrics, Reader lets the VM read the
 # auto-created DCE and DCR. Both are needed, propagation takes up to 30 min.
 ##############################################################################
 
-# resource "azurerm_role_assignment" "prometheus_publisher" {
-#   scope                = azurerm_monitor_workspace.amw.default_data_collection_rule_id
-#   role_definition_name = "Monitoring Metrics Publisher"
-#   principal_id         = azurerm_linux_virtual_machine.prometheus_vm.identity[0].principal_id
-# }
+resource "azurerm_role_assignment" "prometheus_publisher" {
+  scope                = azurerm_monitor_workspace.amw.default_data_collection_rule_id
+  role_definition_name = "Monitoring Metrics Publisher"
+  principal_id         = azurerm_linux_virtual_machine.prometheus_vm.identity[0].principal_id
+}
 
-# resource "azurerm_role_assignment" "prometheus_dce_reader" { ... }
-# resource "azurerm_role_assignment" "prometheus_dcr_reader" { ... }
+resource "azurerm_role_assignment" "prometheus_dce_reader" {
+  scope                = azurerm_monitor_workspace.amw.default_data_collection_endpoint_id
+  role_definition_name = "Monitoring Reader"
+  principal_id         = azurerm_linux_virtual_machine.prometheus_vm.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "prometheus_dcr_reader" {
+  scope                = azurerm_monitor_workspace.amw.default_data_collection_rule_id
+  role_definition_name = "Monitoring Reader"
+  principal_id         = azurerm_linux_virtual_machine.prometheus_vm.identity[0].principal_id
+}
 
 ##############################################################################
 # Step 6: Azure Managed Grafana
