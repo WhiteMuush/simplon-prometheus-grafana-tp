@@ -1,9 +1,16 @@
-# Deployed to /etc/prometheus/prometheus.yml on the Prometheus VM.
+# Template. Substitute the two placeholders, then deploy the result to
+# /etc/prometheus/prometheus.yml on the Prometheus VM. They are kept out of git
+# because they identify this subscription's ingestion path.
 #
-# The two values below come from the Data Collection Endpoint and Rule that
-# Azure created on its own alongside the Azure Monitor Workspace:
-#   az monitor data-collection endpoint show --ids "$DCE_ID" --query metricsIngestion.endpoint -o tsv
-#   az monitor data-collection rule show --ids "$DCR_ID" --query immutableId -o tsv
+# Both values come from the Data Collection Endpoint and Rule that Azure created
+# on its own alongside the Azure Monitor Workspace:
+#
+#   DCE_HOST=$(az monitor data-collection endpoint show --ids "$(terraform -chdir=terraform output -raw dce_id)" \
+#     --query metricsIngestion.endpoint -o tsv)
+#   DCR_ID=$(az monitor data-collection rule show --ids "$(terraform -chdir=terraform output -raw dcr_id)" \
+#     --query immutableId -o tsv)
+#   sed -e "s|__DCE_METRICS_INGESTION_ENDPOINT__|$DCE_HOST|" \
+#       -e "s|__DCR_IMMUTABLE_ID__|$DCR_ID|" prometheus/prometheus.yml > /tmp/prometheus.yml
 #
 # Note the query path: metricsIngestion.endpoint, not metricsIngestionEndpoint.
 # The flat name returns an empty string instead of an error.

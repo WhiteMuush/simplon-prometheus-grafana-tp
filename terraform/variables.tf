@@ -21,16 +21,28 @@ variable "location" {
   default     = "francecentral"
 }
 
+# No default on purpose: a personal address does not belong in a public repo.
+# Set it in terraform.tfvars, which .gitignore keeps out of git.
 variable "alert_email" {
   description = "Address receiving the Action Group notifications."
   type        = string
-  default     = "you@example.com"
+
+  validation {
+    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.alert_email))
+    error_message = "alert_email must be a valid email address."
+  }
 }
 
+# No default on purpose either: this is a home IP address, which locates its
+# owner. Same treatment, set it in terraform.tfvars.
 variable "allowed_source_ip" {
   description = "Only this address may reach SSH and the Prometheus UI on the VM. Update it when your ISP hands you a new one."
   type        = string
-  default     = "203.0.113.10"
+
+  validation {
+    condition     = can(cidrnetmask("${var.allowed_source_ip}/32"))
+    error_message = "allowed_source_ip must be a single IPv4 address."
+  }
 }
 
 variable "ssh_public_key_path" {

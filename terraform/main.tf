@@ -183,7 +183,7 @@ resource "azurerm_linux_virtual_machine" "prometheus_vm" {
 
   admin_ssh_key {
     username   = "azureuser"
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand(var.ssh_public_key_path))
   }
 
   network_interface_ids = [azurerm_network_interface.nic.id]
@@ -300,8 +300,8 @@ resource "azurerm_monitor_action_group" "ag" {
   short_name          = "alertmonit"
 
   email_receiver {
-    name          = "melvin_petiit"
-    email_address = "you@example.com"
+    name          = "owner"
+    email_address = var.alert_email
   }
 }
 

@@ -84,6 +84,7 @@ terraform/
 ├── backend.tf         # azurerm remote state, one key per team
 ├── providers.tf       # azurerm ~> 4.0
 ├── variables.tf       # resource group, owner suffix, alert email, tags
+├── example.tfvars     # template to copy to terraform.tfvars, which stays out of git
 ├── main.tf            # App Service + App Insights + Monitor Workspace + Prometheus VM + roles + alerts
 └── outputs.tf         # app URL, Grafana endpoint, DCE and DCR ids
 app/
@@ -109,12 +110,21 @@ simulate-incident.sh   # fires errors at the app to trigger both alerts
 
 ## Run it
 
+Nothing in this repo carries a real address, IP or subscription id: they are
+either variables without a default, or `__PLACEHOLDER__` markers you substitute
+at deploy time. Start by filling in your own values.
+
 ```bash
 cd terraform
-terraform init      # see backend.tf before running this
+cp example.tfvars terraform.tfvars   # gitignored, put your email and public IP there
+terraform init                       # see backend.tf before running this
 terraform plan
 terraform apply
 ```
+
+`alert_email` and `allowed_source_ip` have no default, so a missing
+`terraform.tfvars` fails at plan time rather than silently deploying someone
+else's values.
 
 Then deploy the application code and check both signals:
 
@@ -127,6 +137,24 @@ curl https://app-monitoring-mpetit.azurewebsites.net/metrics
 ```
 
 Prometheus data lands in the Azure Monitor Workspace a few minutes after the VM starts. Check it in the portal under **Prometheus Explorer** with the query `log_erreurs_total`.
+
+### Substituting the placeholders
+
+`prometheus/prometheus.yml` and `grafana/dashboard-monitoring-etendu.json` ship
+with markers instead of the ingestion path and the subscription id. Replace them
+before deploying the config and before importing the dashboard:
+
+```bash
+# Prometheus remote_write, on the VM
+DCE_HOST=$(az monitor data-collection endpoint show --ids "$(terraform -chdir=terraform output -raw dce_id)" --query metricsIngestion.endpoint -o tsv)
+DCR_IMM=$(az monitor data-collection rule show --ids "$(terraform -chdir=terraform output -raw dcr_id)" --query immutableId -o tsv)
+sed -e "s|__DCE_METRICS_INGESTION_ENDPOINT__|$DCE_HOST|" \
+    -e "s|__DCR_IMMUTABLE_ID__|$DCR_IMM|" prometheus/prometheus.yml > /tmp/prometheus.yml
+
+# Grafana dashboard, before importing it
+sed "s|__SUBSCRIPTION_ID__|$(az account show --query id -o tsv)|g" \
+    grafana/dashboard-monitoring-etendu.json > /tmp/dashboard.json
+```
 
 ## Trigger the alerts
 
