@@ -1,0 +1,12 @@
+flask==3.1.0
+gunicorn==23.0.0
+
+# Application Insights. The distro pulls the OpenTelemetry SDK, but the Flask
+# instrumentation is pinned explicitly because app.py imports FlaskInstrumentor.
+azure-monitor-opentelemetry==1.8.9
+opentelemetry-instrumentation-flask==0.64b0
+
+# Prometheus. The exporter serves /metrics, prometheus-client is pinned
+# explicitly because app.py imports Counter from it.
+prometheus-flask-exporter==0.23.2
+prometheus-client==0.25.0
