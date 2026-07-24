@@ -1,6 +1,5 @@
 ##############################################################################
-# Outputs referenced by docs/CONSIGNES.md.
-# Uncomment each one as the matching resource lands in main.tf.
+# Outputs referenced by docs/CONSIGNES.md and by the Makefile scripts.
 ##############################################################################
 
 output "resource_group_name" {
