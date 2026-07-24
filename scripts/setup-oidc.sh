@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname "$0")/_lib.sh"
 
 # Bootstraps GitHub Actions OIDC access to Azure for this repo, least privilege.
 # Idempotent: safe to re-run, every step checks existence before creating.
 #
 # Client-side JMESPath filtering (--all + [?...]) is used everywhere because
 # this az CLI version rejects server-side --filter on Graph resources.
+# Shared identifiers (RG, SA, GITHUB_REPO) come from _lib.sh.
 
 APP_NAME="github-oidc-monitoring-tp"
-REPO="WhiteMuush/simplon-prometheus-grafana-tp"
-SUBJECT="repo:${REPO}:ref:refs/heads/main"
-RG="mpetitRG"
-SA="stmpetittfstate"
+SUBJECT="repo:${GITHUB_REPO}:ref:refs/heads/main"
 
 # Built-in role definition GUIDs Terraform assigns to the Prometheus VM identity.
 # Verify with: az role definition list --name "<role>" --query "[0].name" -o tsv
