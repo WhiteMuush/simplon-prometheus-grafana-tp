@@ -23,10 +23,16 @@ declare -A FED_SUFFIXES=(
   [github-main]="ref:refs/heads/main"
 )
 
-# Built-in role definition GUIDs Terraform assigns to the Prometheus VM identity.
+# Built-in role definition GUIDs Terraform assigns (Prometheus VM + Grafana).
+# The RBAC Administrator condition below is restricted to exactly these, so the
+# identity can never grant itself anything broader.
 # Verify with: az role definition list --name "<role>" --query "[0].name" -o tsv
-PUBLISHER="3913510d-42f4-4e42-8a64-420c390055eb"   # Monitoring Metrics Publisher
-MON_READER="43d0d8ad-25c7-4714-9337-8ba259a9fe05"  # Monitoring Reader
+ROLE_GUIDS="\
+3913510d-42f4-4e42-8a64-420c390055eb, \
+43d0d8ad-25c7-4714-9337-8ba259a9fe05, \
+b0d8363b-8ddd-447d-831f-62ca05bff136, \
+22926164-76b3-42b3-bc55-97df8dab3e41"
+# Monitoring Metrics Publisher / Monitoring Reader / Monitoring Data Reader / Grafana Admin
 
 die() { echo "$1" >&2; exit 1; }
 
@@ -93,8 +99,8 @@ assign_state_role() {
     --role "Storage Blob Data Contributor" --scope "$2"
 }
 
-# RBAC Administrator constrained to the two monitoring roles only, so the
-# identity can never assign itself Owner or anything else.
+# RBAC Administrator constrained to the four roles Terraform assigns only, so
+# the identity can never assign itself Owner or anything else.
 assign_rbac_role() {
   az role assignment create --assignee-object-id "$1" --assignee-principal-type ServicePrincipal \
     --role "Role Based Access Control Administrator" --scope "$2" \
@@ -105,7 +111,7 @@ assign_rbac_role() {
  )
  OR
  (
-  @Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${PUBLISHER}, ${MON_READER}}
+  @Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${ROLE_GUIDS}}
  )
 ) AND (
  (
@@ -113,7 +119,7 @@ assign_rbac_role() {
  )
  OR
  (
-  @Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${PUBLISHER}, ${MON_READER}}
+  @Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${ROLE_GUIDS}}
  )
 )"
 }
