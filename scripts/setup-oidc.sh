@@ -10,7 +10,16 @@ source "$(dirname "$0")/_lib.sh"
 # Shared identifiers (RG, SA, GITHUB_REPO) come from _lib.sh.
 
 APP_NAME="github-oidc-monitoring-tp"
-SUBJECT="repo:${GITHUB_REPO}:ref:refs/heads/main"
+
+# Federated credentials, one trusted subject per CI use case:
+#   pull_request       -> the plan job on PRs
+#   environment:...    -> the apply job, gated by the production environment
+#   ref:refs/heads/... -> kept for any job running directly on main
+declare -A FED_CREDS=(
+  [github-pull-request]="repo:${GITHUB_REPO}:pull_request"
+  [github-env-production]="repo:${GITHUB_REPO}:environment:production"
+  [github-main]="repo:${GITHUB_REPO}:ref:refs/heads/main"
+)
 
 # Built-in role definition GUIDs Terraform assigns to the Prometheus VM identity.
 # Verify with: az role definition list --name "<role>" --query "[0].name" -o tsv
@@ -50,16 +59,16 @@ ensure_sp() {
   echo "$sp_oid"
 }
 
-# Create the federated credential trusting only pushes to main, if absent.
+# Create one federated credential (name, subject) if absent.
 ensure_federated_credential() {
-  local app_id="$1" existing
+  local app_id="$1" name="$2" subject="$3" existing
   existing=$(az ad app federated-credential list --id "$app_id" \
-    --query "[?subject=='${SUBJECT}'].name | [0]" -o tsv)
+    --query "[?name=='${name}'].name | [0]" -o tsv)
   [ -n "$existing" ] && return 0
   az ad app federated-credential create --id "$app_id" --parameters "{
-    \"name\": \"github-main\",
+    \"name\": \"${name}\",
     \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"${SUBJECT}\",
+    \"subject\": \"${subject}\",
     \"audiences\": [\"api://AzureADTokenExchange\"]
   }" >/dev/null
 }
@@ -112,7 +121,9 @@ main() {
   local app_id sp_oid sub_id rg_scope sa_scope
   app_id=$(ensure_app);            echo "APP_ID=$app_id"
   sp_oid=$(ensure_sp "$app_id");   echo "SP_OID=$sp_oid"
-  ensure_federated_credential "$app_id"
+  for name in "${!FED_CREDS[@]}"; do
+    ensure_federated_credential "$app_id" "$name" "${FED_CREDS[$name]}"
+  done
 
   sub_id=$(az account show --query id -o tsv)
   rg_scope="/subscriptions/${sub_id}/resourceGroups/${RG}"
