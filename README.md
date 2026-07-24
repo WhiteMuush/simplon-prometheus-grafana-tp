@@ -48,23 +48,47 @@ The app carries a dual instrumentation: `azure-monitor-opentelemetry` sends trac
 
 ```mermaid
 flowchart LR
-    APP["App Service<br/>log-analyser (Flask)"]
-    VM["Prometheus VM<br/>dedicated subnet"]
-    AMW["Azure Monitor<br/>Workspace"]
-    APPI["Application Insights"]
-    LAW["Log Analytics<br/>Workspace"]
-    GRAF["Azure Managed<br/>Grafana"]
-    AG["Action Group"]
+    APP(["🐍 App Service<br/><b>log-analyser</b> · Flask"])
 
-    APP -- "/metrics (HTTPS)" --> VM
-    VM -- "remote_write" --> AMW
+    subgraph METRICS ["📊 Metrics signal — PromQL"]
+        direction TB
+        VM["Prometheus VM<br/><i>dedicated subnet</i>"]
+        AMW["Azure Monitor<br/>Workspace"]
+        VM -- "remote_write" --> AMW
+    end
+
+    subgraph TRACES ["🔎 Traces signal — KQL"]
+        direction TB
+        APPI["Application<br/>Insights"]
+        LAW["Log Analytics<br/>Workspace"]
+        APPI -- "stores" --> LAW
+    end
+
+    GRAF{{"📈 Azure Managed Grafana<br/><b>one dashboard, both sources</b>"}}
+    AG["🔔 Action Group"]
+    USER(["📧 You"])
+
+    APP -- "scrape /metrics" --> VM
     APP -- "OpenTelemetry" --> APPI
-    APPI -- "stores" --> LAW
+
     AMW -- "PromQL" --> GRAF
     LAW -- "KQL" --> GRAF
-    AMW -- "rule group" --> AG
-    APPI -- "scheduled query" --> AG
-    AG -- "email" --> USER["You"]
+
+    AMW -. "rule group<br/>(business alert)" .-> AG
+    APPI -. "scheduled query<br/>(technical alert)" .-> AG
+    AG -- "email" --> USER
+
+    classDef source fill:#3776AB,stroke:#1b4a6b,color:#fff
+    classDef metric fill:#E6522C,stroke:#8f2f15,color:#fff
+    classDef trace fill:#0078D4,stroke:#004a85,color:#fff
+    classDef viz fill:#F46800,stroke:#9c4200,color:#fff
+    classDef alert fill:#B71C1C,stroke:#7a1010,color:#fff
+
+    class APP source
+    class VM,AMW metric
+    class APPI,LAW trace
+    class GRAF viz
+    class AG,USER alert
 ```
 
 The Prometheus VM is the only piece introducing classic networking (VNet, dedicated subnet, NSG, public IP) into an otherwise fully managed stack. On AKS that layer disappears: the managed Prometheus addon handles scraping and ingestion inside the cluster.
