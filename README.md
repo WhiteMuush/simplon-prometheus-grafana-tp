@@ -104,24 +104,39 @@ The Prometheus VM is the only piece introducing classic networking (VNet, dedica
 ## Repository layout
 
 ```
-terraform/
-├── backend.tf         # azurerm remote state, one key per team
-├── providers.tf       # azurerm ~> 4.0
-├── variables.tf       # resource group, owner suffix, alert email, tags
-├── example.tfvars     # template to copy to terraform.tfvars, which stays out of git
-├── main.tf            # App Service + App Insights + Monitor Workspace + Prometheus VM + roles + alerts
-└── outputs.tf         # app URL, Grafana endpoint, DCE and DCR ids
+terraform/                 # one root module, one file per concern
+├── backend.tf             # azurerm remote state, one key per team
+├── providers.tf           # azurerm ~> 4.0
+├── variables.tf           # resource group, owner suffix, alert email, tags
+├── example.tfvars         # template to copy to terraform.tfvars, which stays out of git
+├── data.tf                # resource group + client_config lookups
+├── locals.tf              # name suffix and common tags
+├── network.tf             # VNet, subnet, NSG, public IP, NIC
+├── app_service.tf         # service plan + Linux Web App
+├── monitoring.tf          # Log Analytics + App Insights + Monitor Workspace
+├── prometheus_vm.tf       # Prometheus VM
+├── role_assignments.tf    # RBAC for the VM identity
+├── grafana.tf             # Managed Grafana + its role assignments
+├── alerts.tf              # Action Group + business and technical alerts
+└── outputs.tf             # app URL, Grafana endpoint, DCE and DCR ids
 app/
-├── app.py             # Flask API, instrumented for App Insights + Prometheus
+├── app.py                 # Flask API, instrumented for App Insights + Prometheus
 └── requirements.txt
-function/              # HTTP-triggered Function App, kept from the previous lab
+scripts/                   # shell helpers, one per Makefile target
+function/                  # HTTP-triggered Function App, kept from the previous lab
 prometheus/
-└── prometheus.yml     # scrape config + remote_write to the Azure Monitor Workspace
+└── prometheus.yml         # scrape config + remote_write to the Azure Monitor Workspace
 docs/
-└── CONSIGNES.md       # full assignment
-captures/              # Grafana dashboard and triggered alerts
-simulate-incident.sh   # fires errors at the app to trigger both alerts
+└── CONSIGNES.md           # full assignment
+captures/                  # Grafana dashboard and triggered alerts
+Makefile                   # deploy, connect, status and stress-test shortcuts
+simulate-incident.sh       # fires errors at the app to trigger both alerts
 ```
+
+The Terraform code is a single flat root module split by domain, one file per
+concern. No sub-modules: the stack is a single environment deployed once, so
+plain files keep resource references direct and the graph readable, which is
+the idiomatic layout at this size.
 
 ## Dashboard panels
 
@@ -162,6 +177,23 @@ curl https://app-monitoring-mpetit.azurewebsites.net/metrics
 
 Prometheus data lands in the Azure Monitor Workspace a few minutes after the VM starts. Check it in the portal under **Prometheus Explorer** with the query `log_erreurs_total`.
 
+### Make shortcuts
+
+A `Makefile` wraps the common steps, each target delegating to a script in
+`scripts/`. Endpoints (VM IP, Grafana URL, app URL) are read from the Terraform
+outputs, nothing is hard-coded.
+
+```bash
+make                  # list every target (default)
+make deploy-terraform # terraform init/fmt/validate/plan/apply, then push the app code
+make deploy-app       # push the Flask code only (az webapp up)
+make status           # deployed resource count and endpoints
+make prometheus-connect  # SSH into the Prometheus VM
+make grafana-open     # print the Grafana URL
+make stress-test      # fire errors at the app to trigger both alerts
+make destroy-terraform   # destroy the resources (the tfstate blob is kept)
+```
+
 ### Substituting the placeholders
 
 `prometheus/prometheus.yml` and `grafana/dashboard-monitoring-etendu.json` ship
@@ -183,11 +215,15 @@ sed "s|__SUBSCRIPTION_ID__|$(az account show --query id -o tsv)|g" \
 ## Trigger the alerts
 
 ```bash
+make stress-test                           # reads the app URL from the Terraform outputs
+# or, targeting an app by name directly:
 ./simulate-incident.sh                     # defaults to app-monitoring-mpetit
 ./simulate-incident.sh autre-app-service   # or target another app
 ```
 
 It fires 20 requests at `/error` and 10 at `/crash`, then prints the `log_erreurs_total` counter straight from `/metrics`. Both alerts should follow: the Prometheus rule group on the business metric, and the scheduled query rule on Application Insights failures.
+
+The counter only moves once the Flask code is actually deployed. If `/metrics` returns a 404, the App Service is still serving the default page: run `make deploy-app` first.
 
 ## Gotchas worth knowing
 
