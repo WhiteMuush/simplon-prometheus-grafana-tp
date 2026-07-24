@@ -11,14 +11,16 @@ source "$(dirname "$0")/_lib.sh"
 
 APP_NAME="github-oidc-monitoring-tp"
 
-# Federated credentials, one trusted subject per CI use case:
+# Federated credential suffixes, one per CI use case, keyed by credential name:
 #   pull_request       -> the plan job on PRs
 #   environment:...    -> the apply job, gated by the production environment
 #   ref:refs/heads/... -> kept for any job running directly on main
-declare -A FED_CREDS=(
-  [github-pull-request]="repo:${GITHUB_REPO}:pull_request"
-  [github-env-production]="repo:${GITHUB_REPO}:environment:production"
-  [github-main]="repo:${GITHUB_REPO}:ref:refs/heads/main"
+# The subject prefix uses GitHub's immutable owner/repo IDs (rename-proof) and
+# is fetched live below, so no numeric IDs are hardcoded here.
+declare -A FED_SUFFIXES=(
+  [github-pull-request]="pull_request"
+  [github-env-production]="environment:production"
+  [github-main]="ref:refs/heads/main"
 )
 
 # Built-in role definition GUIDs Terraform assigns to the Prometheus VM identity.
@@ -34,6 +36,12 @@ get_app_id() {
 
 get_sp_oid() {
   az ad sp list --all --query "[?appId=='${1}'].id | [0]" -o tsv
+}
+
+# GitHub's immutable subject prefix for this repo (repo:owner@id/repo@id).
+# Tokens are minted with these numeric IDs, so fed cred subjects must match.
+get_sub_prefix() {
+  gh api "repos/${GITHUB_REPO}/actions/oidc/customization/sub" --jq .sub_claim_prefix
 }
 
 # Create the app registration if absent, echo its appId.
@@ -121,8 +129,11 @@ main() {
   local app_id sp_oid sub_id rg_scope sa_scope
   app_id=$(ensure_app);            echo "APP_ID=$app_id"
   sp_oid=$(ensure_sp "$app_id");   echo "SP_OID=$sp_oid"
-  for name in "${!FED_CREDS[@]}"; do
-    ensure_federated_credential "$app_id" "$name" "${FED_CREDS[$name]}"
+  local prefix
+  prefix=$(get_sub_prefix)
+  [ -n "$prefix" ] || die "could not fetch OIDC subject prefix (is gh authenticated?)"
+  for name in "${!FED_SUFFIXES[@]}"; do
+    ensure_federated_credential "$app_id" "$name" "${prefix}:${FED_SUFFIXES[$name]}"
   done
 
   sub_id=$(az account show --query id -o tsv)
